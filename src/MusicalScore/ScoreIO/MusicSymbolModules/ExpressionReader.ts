@@ -308,41 +308,47 @@ export class ExpressionReader {
             if (octaveShiftNode !== undefined && octaveShiftNode.hasAttributes) {
                 try {
                     const numberXml: number = this.readNumber(octaveShiftNode);
-                    if (octaveShiftNode.attribute("size")) {
+                    const type: string = octaveShiftNode.attribute("type")?.value;
+                    // Handle stop first - stop entries may not have a "size" attribute
+                    if (type === "stop") {
+                        if (this.openOctaveShift) {
+                            this.getMultiExpression = this.createNewMultiExpressionIfNeeded(
+                                currentMeasure, this.openOctaveShift.numberXml, endTimestamp);
+                            const octaveShiftStartExpression: MultiExpression = this.getMultiExpression;
+                            octaveShiftStartExpression.OctaveShiftEnd = this.openOctaveShift;
+                            this.openOctaveShift.ParentEndMultiExpression = this.getMultiExpression;
+                            this.openOctaveShift = undefined;
+                        }
+                    } else if (octaveShiftNode.attribute("size")) {
                         const size: number = parseInt(octaveShiftNode.attribute("size").value, 10);
                         let octave: number = 0;
                         if (size === 8) {
                             octave = 1;
                         } else if (size === 15) {
                             octave = 2;
-                             }
-                        let type: string = octaveShiftNode.attribute("type")?.value;
-                        if (!type) {
+                        }
+                        let resolvedType: string = type;
+                        if (!resolvedType) {
                             if (placement === PlacementEnum.Above) {
-                                type = "down";
+                                resolvedType = "down";
                             } else if (placement === PlacementEnum.Below) {
-                                type = "up";
+                                resolvedType = "up";
                             }
                         }
-                        if (type === "up" || type === "down") { // unfortunately not always given in MusicXML (e.g. Musescore 3.6.2) even though required
-                            const octaveShift: OctaveShift = new OctaveShift(type, octave);
+                        // unfortunately not always given in MusicXML (e.g. Musescore 3.6.2) even though required
+                        if (resolvedType === "up" || resolvedType === "down") {
+                            // Skip duplicate octave shift start if one is already open (e.g. Guitar Pro exports)
+                            if (this.openOctaveShift) {
+                                return;
+                            }
+                            const octaveShift: OctaveShift = new OctaveShift(resolvedType, octave);
                             octaveShift.StaffNumber = octaveStaffNumber;
                             this.getMultiExpression = this.createNewMultiExpressionIfNeeded(
                                 currentMeasure, numberXml);
                             this.getMultiExpression.OctaveShiftStart = octaveShift;
                             octaveShift.ParentStartMultiExpression = this.getMultiExpression;
                             this.openOctaveShift = octaveShift;
-                        } else if (type === "stop") {
-                            if (this.openOctaveShift) {
-                                this.getMultiExpression = this.createNewMultiExpressionIfNeeded(
-                                    currentMeasure, this.openOctaveShift.numberXml, endTimestamp);
-                                const octaveShiftStartExpression: MultiExpression = this.getMultiExpression;
-                                octaveShiftStartExpression.OctaveShiftEnd = this.openOctaveShift;
-                                this.openOctaveShift.ParentEndMultiExpression = this.getMultiExpression;
-                                this.openOctaveShift = undefined;
-                            }
-                        } // TODO handle type === "continue"?
-                        else if (!type) {
+                        } else if (!resolvedType) {
                             log.debug("octave-shift missing type in xml");
                         }
                     }
